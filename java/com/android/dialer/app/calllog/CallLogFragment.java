@@ -23,8 +23,13 @@ import android.app.Activity;
 import android.app.KeyguardManager;
 import android.content.ContentResolver;
 import android.content.Context;
+import android.content.Intent;
 import android.database.ContentObserver;
 import android.database.Cursor;
+import android.graphics.Canvas;
+import android.graphics.PorterDuff;
+import android.graphics.drawable.Drawable;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -46,6 +51,8 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.content.res.AppCompatResources;
 import androidx.fragment.app.Fragment;
+import androidx.recyclerview.widget.ItemTouchHelper;
+import androidx.recyclerview.widget.ItemTouchHelper.SimpleCallback;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -66,6 +73,8 @@ import com.android.dialer.database.CallLogQueryHandler.Listener;
 import com.android.dialer.location.GeoUtil;
 import com.android.dialer.oem.CequintCallerIdManager;
 import com.android.dialer.phonenumbercache.ContactInfoHelper;
+import com.android.dialer.theme.base.Theme;
+import com.android.dialer.theme.base.ThemeComponent;
 import com.android.dialer.util.PermissionsUtil;
 import com.android.dialer.widget.EmptyContentView;
 import com.android.dialer.widget.EmptyContentView.OnEmptyViewActionButtonClickedListener;
@@ -294,13 +303,84 @@ public class CallLogFragment extends Fragment
     return view;
   }
 
+  private String concatCallIds(long[] callIds) {
+      if (callIds == null || callIds.length == 0) {
+        return null;
+      }
+
+      StringBuilder str = new StringBuilder();
+      for (long callId : callIds) {
+        if (str.length() != 0) {
+          str.append(",");
+        }
+        str.append(callId);
+      }
+
+      return str.toString();
+    }
+
   protected void setupView(View view) {
     recyclerView = (RecyclerView) view.findViewById(R.id.recycler_view);
+    SimpleCallback simpleCallback = new SimpleCallback(50, ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT) {
+
+        @Override
+        public boolean onMove(RecyclerView recyclerView, RecyclerView.ViewHolder viewHolder, RecyclerView.ViewHolder target) {
+            return false;
+        }
+
+        @Override
+        public void onSwiped(RecyclerView.ViewHolder holder, int direction) {
+            if (holder instanceof CallLogListItemViewHolder){
+                CallLogListItemViewHolder viewHolder = ((CallLogListItemViewHolder)holder);
+                if (direction == ItemTouchHelper.LEFT){
+                    getContext().startActivity(new Intent(Intent.ACTION_VIEW, Uri.fromParts("sms",viewHolder.number, null)));
+                    adapter.notifyItemChanged(holder.getAdapterPosition());
+                } else {
+                    //TODO: Make it thread safe
+                    getContext()
+                        .getContentResolver()
+                        .delete(
+                            CallLog.Calls.CONTENT_URI,
+                            CallLog.Calls._ID + " IN (" + concatCallIds(viewHolder.callIds) + ")" /* where */,
+                            null /* selectionArgs */);
+                }
+            }
+        }
+
+        @Override
+        public void onChildDraw(Canvas canvas, RecyclerView recyclerView, RecyclerView.ViewHolder viewHolder, float dX, float dY, int actionState, boolean isCurrentlyActive) {
+            if (actionState == ItemTouchHelper.ACTION_STATE_SWIPE) {
+                boolean isTowardsRight = dX > 0;
+                Drawable icon =  getResources().getDrawable(isTowardsRight ? R.drawable.quantum_ic_delete_vd_theme_24 : R.drawable.quantum_ic_message_vd_theme_24);
+                int iconHorizontalMargin = 20;
+                int halfIconSize = icon.getIntrinsicHeight() / 2;
+                int top = viewHolder.itemView.getTop() + ((viewHolder.itemView.getBottom() - viewHolder.itemView.getTop()) / 2 - halfIconSize);
+                icon = icon.mutate();
+                Theme theme = ThemeComponent.get(getContext()).theme();
+                icon.setColorFilter(theme.getColorIcon(), PorterDuff.Mode.MULTIPLY);
+                if (dX > 0) { // Right swipe
+                    canvas.clipRect(viewHolder.itemView.getLeft(), viewHolder.itemView.getTop(), viewHolder.itemView.getLeft() + (int) dX, viewHolder.itemView.getBottom());
+                    icon.setBounds(viewHolder.itemView.getLeft() + iconHorizontalMargin, top, viewHolder.itemView.getLeft() + iconHorizontalMargin + icon.getIntrinsicWidth(), top + icon.getIntrinsicHeight()
+                    );
+                } else if (dX < 0) { // Left swipe
+                    canvas.clipRect(viewHolder.itemView.getRight() + (int) dX, viewHolder.itemView.getTop(), viewHolder.itemView.getRight(), viewHolder.itemView.getBottom());
+                    int imgLeft = viewHolder.itemView.getRight() - iconHorizontalMargin - halfIconSize * 2;
+                    icon.setBounds(imgLeft, top, viewHolder.itemView.getRight() - iconHorizontalMargin, top + icon.getIntrinsicHeight());
+                }
+                icon.draw(canvas);
+            }
+            super.onChildDraw(canvas, recyclerView, viewHolder, dX, dY, actionState, isCurrentlyActive);
+        }
+    };
+
+    ItemTouchHelper itemTouchHelper = new ItemTouchHelper(simpleCallback);
+    itemTouchHelper.attachToRecyclerView(recyclerView);
+
     recyclerView.setHasFixedSize(true);
     layoutManager = new LinearLayoutManager(getActivity());
     recyclerView.setLayoutManager(layoutManager);
     emptyListView = (EmptyContentView) view.findViewById(R.id.empty_list_view);
-    emptyListView.setImage(R.drawable.empty_call_log);
+    emptyListView.setImage(R.drawable.oneplus_empty_call_log_illustration);
     emptyListView.setActionClickedListener(this);
     modalAlertView = (ViewGroup) view.findViewById(R.id.modal_message_container);
     modalAlertManager =

@@ -2,7 +2,7 @@
 
 <!--
   ~ Copyright (C) 2014 The Android Open Source Project
-  ~ Copyright (C) 2023 The LineageOS Project
+  ~ Copyright (C) 2023-2024 The LineageOS Project
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -90,6 +90,25 @@
             android:summary="%s"
             android:title="@string/call_recording_format"
             app:iconSpaceReserved="false" />
+
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="@string/call_recording_autostart_key"
+            android:title="@string/call_recording_autostart_title" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:key="dialer_general_smart_category_key"
+        android:title="@string/smart_category_title"
+        android:persistent="false"
+        app:iconSpaceReserved="false">
+
+        <SwitchPreferenceCompat
+            android:key="button_smart_mute"
+            android:title="@string/smart_mute_title"
+            android:summary="@string/smart_mute_summary"
+            android:defaultValue="false" />
 
     </PreferenceCategory>
 

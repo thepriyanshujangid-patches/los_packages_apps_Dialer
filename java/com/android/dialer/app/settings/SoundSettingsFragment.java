@@ -24,6 +24,7 @@ import android.app.AlertDialog;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Bundle;
@@ -51,6 +52,10 @@ import com.android.dialer.util.SettingsUtil;
 
 public class SoundSettingsFragment extends PreferenceFragmentCompat
     implements Preference.OnPreferenceChangeListener {
+
+  private static final String KEY_RECORDING_WARNING_PRESENTED = "recording_warning_presented";
+
+  private static final String BUTTON_SMART_MUTE_KEY = "button_smart_mute";
 
   private static final int NO_DTMF_TONE = 0;
   private static final int PLAY_DTMF_TONE = 1;
@@ -92,6 +97,8 @@ public class SoundSettingsFragment extends PreferenceFragmentCompat
   private SwitchPreferenceCompat playDtmfTone;
   private ListPreference dtmfToneLength;
   private SwitchPreferenceCompat enableDndInCall;
+  private SwitchPreferenceCompat callRecordAutostart;
+  private SwitchPreferenceCompat smartMute;
 
   private NotificationManager notificationManager;
 
@@ -118,6 +125,8 @@ public class SoundSettingsFragment extends PreferenceFragmentCompat
     playDtmfTone = findPreference(context.getString(R.string.play_dtmf_preference_key));
     dtmfToneLength = findPreference(context.getString(R.string.dtmf_tone_length_preference_key));
     enableDndInCall = findPreference("incall_enable_dnd");
+    callRecordAutostart = findPreference(context.getString(R.string.call_recording_autostart_key));
+    smartMute = findPreference(BUTTON_SMART_MUTE_KEY);
 
     if (hasVibrator()) {
       vibrateWhenRinging.setOnPreferenceChangeListener(this);
@@ -161,7 +170,10 @@ public class SoundSettingsFragment extends PreferenceFragmentCompat
     if (!CallRecorderService.isEnabled(getActivity())) {
       getPreferenceScreen().removePreference(
               findPreference(context.getString(R.string.call_recording_category_key)));
+    } else {
+      callRecordAutostart.setOnPreferenceChangeListener(this);
     }
+    smartMute.setOnPreferenceChangeListener(this);
     notificationManager = context.getSystemService(NotificationManager.class);
   }
 
@@ -172,7 +184,14 @@ public class SoundSettingsFragment extends PreferenceFragmentCompat
     if (!Settings.System.canWrite(getContext())) {
       // If the user launches this setting fragment, then toggles the WRITE_SYSTEM_SETTINGS
       // AppOp, then close the fragment since there is nothing useful to do.
-      getActivity().onBackPressed();
+      Toast.makeText(
+              getContext(),
+              getResources().getString(R.string.toast_cannot_write_system_settings),
+              Toast.LENGTH_SHORT)
+          .show();
+      new Handler(Looper.getMainLooper()).post(() -> {
+            requireActivity().onBackPressed();
+        });
       return;
     }
 
@@ -227,6 +246,37 @@ public class SoundSettingsFragment extends PreferenceFragmentCompat
         // At this time, it is unknown whether the user granted the permission
         return false;
       }
+    } else if (preference == callRecordAutostart) {
+      boolean newValue = (Boolean) objValue;
+      if (newValue) {
+        final SharedPreferences prefs =
+                getPreferenceManager().getDefaultSharedPreferences(getContext());
+        boolean warningPresented = prefs.getBoolean(KEY_RECORDING_WARNING_PRESENTED, false);
+        if (!warningPresented) {
+          new AlertDialog.Builder(getActivity())
+                  .setTitle(R.string.recording_warning_title)
+                  .setMessage(R.string.recording_warning_text)
+                  .setPositiveButton(R.string.onscreenCallRecordText, (dialog, which) -> {
+                    prefs.edit()
+                            .putBoolean(KEY_RECORDING_WARNING_PRESENTED, true)
+                            .apply();
+                    callRecordAutostart.setChecked(true);
+                  })
+                  .setNegativeButton(android.R.string.cancel, null)
+                  .show();
+
+          // At this time, it is unknown whether the user granted the permission
+          return false;
+        }
+      }
+    } else if (preference == smartMute) {
+      boolean newValue = (Boolean) objValue;
+      final SharedPreferences prefs =
+              getPreferenceManager().getDefaultSharedPreferences(getContext());
+      prefs
+        .edit()
+        .putBoolean(BUTTON_SMART_MUTE_KEY, newValue)
+        .apply();
     }
     return true;
   }
